@@ -84,6 +84,7 @@ UPLOAD_DIR
 ```
 
 For the Aiven certificate on Render, upload the CA certificate as a secret file or place it during build/deploy and point `DB_SSL_CA_PATH` to that file path.
+You can also paste the full certificate text into `DB_SSL_CA`; the app supports escaped `\n` line breaks.
 
 Use these commands:
 

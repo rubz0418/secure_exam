@@ -3,6 +3,13 @@ const path = require('path');
 const mysql = require('mysql2/promise');
 
 function sslConfig() {
+  if (process.env.DB_SSL_CA) {
+    return {
+      ca: process.env.DB_SSL_CA.replace(/\\n/g, '\n'),
+      rejectUnauthorized: true
+    };
+  }
+
   const configuredPath = process.env.DB_SSL_CA_PATH;
   if (!configuredPath) return { rejectUnauthorized: true };
 
