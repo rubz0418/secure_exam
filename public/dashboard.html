@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SecureExam Dashboard</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <header class="app-header">
+    <button id="menuButton" class="icon-button" title="Menu">☰</button>
+    <a class="brand" href="#dashboard"><img class="brand-logo" src="/logo.svg" alt="SecureExam logo"><span>SecureExam</span></a>
+    <button id="avatarButton" class="avatar" title="Profile">U</button>
+  </header>
+  <aside id="sidebar" class="sidebar"></aside>
+  <main id="app" class="app-main"></main>
+  <div id="toast" class="toast hidden"></div>
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="/app.js?v=20260508-chatfix"></script>
+</body>
+</html>

@@ -1,0 +1,10 @@
+node_modules/
+.env
+public/uploads/*
+!public/uploads/.gitkeep
+certs/*
+!certs/.gitkeep
+npm-debug.log*
+*.log
+server.out.log
+server.err.log

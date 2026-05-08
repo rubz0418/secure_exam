@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SecureExam Login</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body class="auth-page">
+  <main class="auth-shell">
+    <section class="auth-brand">
+      <img class="auth-logo" src="/logo.svg" alt="SecureExam logo">
+      <h1>SecureExam</h1>
+      <p>Secure online examinations with teacher monitoring, student dashboards, and admin oversight.</p>
+    </section>
+    <section class="auth-panel">
+      <div class="tabs">
+        <button class="tab active" data-tab="login">Login</button>
+        <button class="tab" data-tab="register">Register</button>
+      </div>
+      <form id="loginForm" class="auth-form">
+        <label>Email<input name="email" type="email" required value="admin@secureexam.local"></label>
+        <label>Password<input name="password" type="password" required value="admin12345"></label>
+        <button class="primary" type="submit">Login</button>
+      </form>
+      <form id="registerForm" class="auth-form hidden">
+        <label>Name<input name="name" required></label>
+        <label>Email<input name="email" type="email" required></label>
+        <label>Password<input name="password" type="password" required minlength="6"></label>
+        <label>Role
+          <select name="role">
+            <option value="student">Student</option>
+            <option value="teacher">Teacher</option>
+            <option value="admin">Admin</option>
+          </select>
+        </label>
+        <button class="primary" type="submit">Create Account</button>
+      </form>
+      <p id="authMessage" class="message"></p>
+    </section>
+  </main>
+  <script>
+    const loginForm = document.querySelector('#loginForm');
+    const registerForm = document.querySelector('#registerForm');
+    const message = document.querySelector('#authMessage');
+
+    document.querySelectorAll('.tab').forEach((button) => {
+      button.addEventListener('click', () => {
+        document.querySelectorAll('.tab').forEach((tab) => tab.classList.remove('active'));
+        button.classList.add('active');
+        loginForm.classList.toggle('hidden', button.dataset.tab !== 'login');
+        registerForm.classList.toggle('hidden', button.dataset.tab !== 'register');
+        message.textContent = '';
+      });
+    });
+
+    loginForm.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const body = Object.fromEntries(new FormData(loginForm).entries());
+      await auth('/api/auth/login', body);
+    });
+
+    registerForm.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const body = Object.fromEntries(new FormData(registerForm).entries());
+      const response = await fetch('/api/auth/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      });
+      if (!response.ok) {
+        message.textContent = (await response.json()).message || 'Registration failed';
+        return;
+      }
+      await auth('/api/auth/login', { email: body.email, password: body.password });
+    });
+
+    async function auth(url, body) {
+      message.textContent = 'Please wait...';
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        message.textContent = data.message || 'Authentication failed';
+        return;
+      }
+      localStorage.setItem('secureexam_token', data.token);
+      localStorage.setItem('secureexam_user', JSON.stringify(data.user));
+      window.location.href = '/dashboard.html';
+    }
+  </script>
+</body>
+</html>

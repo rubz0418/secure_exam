@@ -1,0 +1,26 @@
+services:
+  - type: web
+    name: secureexam-online-exam-system
+    env: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: PORT
+        value: 3000
+      - key: JWT_SECRET
+        sync: false
+      - key: DB_HOST
+        sync: false
+      - key: DB_PORT
+        sync: false
+      - key: DB_USER
+        sync: false
+      - key: DB_PASS
+        sync: false
+      - key: DB_NAME
+        sync: false
+      - key: DB_SSL_CA_PATH
+        sync: false
+      - key: UPLOAD_DIR
+        value: public/uploads
