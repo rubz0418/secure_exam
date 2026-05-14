@@ -426,7 +426,7 @@ async function renderTakeExam(key) {
       <div id="monitorStatus" class="message"></div>
       <h3>Teacher Chat</h3>
       <div id="chatBox" class="chat-box"></div>
-      <div class="actions"><input id="chatInput" placeholder="Message teacher"><button class="secondary" id="sendChat" type="button">Send</button><button class="secondary voice-button" id="voiceChat" type="button">Record Voice</button></div>
+      <div class="chat-actions"><input id="chatInput" placeholder="Message teacher"><button class="icon-action chat-action send-action" id="sendChat" type="button" data-tooltip="Send Message" aria-label="Send Message">></button><button class="icon-action chat-action voice-button" id="voiceChat" type="button" data-tooltip="Record Voice" aria-label="Record Voice">●</button></div>
     </aside>
   </section>`;
   await setupExamMonitoring(exam);
@@ -627,7 +627,7 @@ function monitorCard(exam, session, warnings) {
       ${warnings.slice(0, 4).map((w) => warningBanner(w)).join('')}
     </div>
     <div id="chatBox-${session.student_id}" class="chat-box monitor-chat"></div>
-    <div class="actions"><input id="chatInput-${session.student_id}" placeholder="Message ${escapeAttr(session.name)}"><button class="secondary" data-chat="${session.student_id}" data-input="chatInput-${session.student_id}">Send</button><button class="secondary voice-button" id="voiceChat-${session.student_id}" data-voice="${session.student_id}" type="button">Record Voice</button></div>
+    <div class="chat-actions"><input id="chatInput-${session.student_id}" placeholder="Message ${escapeAttr(session.name)}"><button class="icon-action chat-action send-action" data-chat="${session.student_id}" data-input="chatInput-${session.student_id}" data-tooltip="Send Message" aria-label="Send Message">></button><button class="icon-action chat-action voice-button" id="voiceChat-${session.student_id}" data-voice="${session.student_id}" type="button" data-tooltip="Record Voice" aria-label="Record Voice">●</button></div>
   </section>`;
 }
 
@@ -672,7 +672,7 @@ async function deleteExam(id) {
 async function renderSubmission(id) {
   const submission = await api(`/api/submissions/${id}`);
   const canGrade = state.user.role !== 'student';
-  app.innerHTML = hero(`${submission.exam_title}`, `${submission.student_name} · ${submission.status}`) +
+  app.innerHTML = hero(`${submission.exam_title}`, `${submission.student_name} · ${formatStatus(submission.status)}`) +
     `<form id="gradeForm" class="grid">
       ${submission.answers.map((answer) => `<section class="card">
         <h3>${escapeHtml(answer.question_text)}</h3>
@@ -880,7 +880,8 @@ async function recordVoice(receiverId, buttonId = 'voiceChat') {
       const duration = Math.round((Date.now() - state.voiceStartedAt) / 1000);
       if (button) {
         button.classList.remove('recording');
-        button.textContent = 'Record Voice';
+        button.textContent = '●';
+        button.dataset.tooltip = 'Record Voice';
       }
       state.voiceStream?.getTracks().forEach((track) => track.stop());
       state.voiceStream = null;
@@ -904,10 +905,11 @@ async function recordVoice(receiverId, buttonId = 'voiceChat') {
     state.voiceRecorder.start();
     if (button) {
       button.classList.add('recording');
-      button.textContent = 'Stop 0:00';
+      button.textContent = '■';
+      button.dataset.tooltip = 'Stop Recording 0:00';
       state.voiceTimer = setInterval(() => {
         const elapsed = Math.floor((Date.now() - state.voiceStartedAt) / 1000);
-        button.textContent = `Stop ${Math.floor(elapsed / 60)}:${String(elapsed % 60).padStart(2, '0')}`;
+        button.dataset.tooltip = `Stop Recording ${Math.floor(elapsed / 60)}:${String(elapsed % 60).padStart(2, '0')}`;
       }, 500);
     }
     showToast('Recording voice. Click Stop when done.');
@@ -989,7 +991,7 @@ function metrics(items) {
 }
 
 function badge(text, tone = '') {
-  return `<span class="badge ${tone}">${escapeHtml(String(text ?? ''))}</span>`;
+  return `<span class="badge ${tone}">${escapeHtml(formatStatus(text))}</span>`;
 }
 
 function check(name, label, checked) {
@@ -1009,6 +1011,12 @@ function blankQuestion() {
 function labelType(value) {
   if (value === 'mcq') return 'Multiple Choice';
   return value.replaceAll('_', ' ').replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function formatStatus(value) {
+  return String(value ?? '')
+    .replaceAll('_', ' ')
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
 function answerTypeNote(type) {
