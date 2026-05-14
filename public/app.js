@@ -438,6 +438,12 @@ async function renderTakeExam(key) {
     await finishExam(false);
   });
   document.querySelector('#sendChat').addEventListener('click', () => sendChat(exam.created_by));
+  document.querySelector('#chatInput').addEventListener('keydown', (event) => {
+    if (event.key === 'Enter' && !event.shiftKey) {
+      event.preventDefault();
+      sendChat(exam.created_by);
+    }
+  });
   document.querySelector('#voiceChat').addEventListener('click', () => recordVoice(exam.created_by, 'voiceChat'));
   await loadChatHistory(exam.id, exam.created_by, 'chatBox');
 }
@@ -603,6 +609,15 @@ async function renderMonitor(examId) {
       route();
     }));
     document.querySelectorAll('[data-chat]').forEach((button) => button.addEventListener('click', () => sendChat(button.dataset.chat, button.dataset.input)));
+    document.querySelectorAll('[id^="chatInput-"]').forEach((input) => {
+      input.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter' && !event.shiftKey) {
+          event.preventDefault();
+          const studentId = input.id.replace('chatInput-', '');
+          sendChat(studentId, input.id);
+        }
+      });
+    });
     document.querySelectorAll('[data-voice]').forEach((button) => button.addEventListener('click', () => recordVoice(button.dataset.voice, button.id)));
     monitoring.sessions.forEach((session) => loadChatHistory(examId, session.student_id, `chatBox-${session.student_id}`));
   } catch (error) {
