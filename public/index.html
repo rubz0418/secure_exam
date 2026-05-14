@@ -91,7 +91,9 @@
       }
       localStorage.setItem('secureexam_token', data.token);
       localStorage.setItem('secureexam_user', JSON.stringify(data.user));
-      window.location.href = '/dashboard.html';
+      const returnTo = sessionStorage.getItem('secureexam_return_to');
+      sessionStorage.removeItem('secureexam_return_to');
+      window.location.href = returnTo || '/dashboard.html';
     }
   </script>
 </body>

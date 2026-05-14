@@ -1,7 +1,11 @@
 const token = localStorage.getItem('secureexam_token');
 const savedUser = JSON.parse(localStorage.getItem('secureexam_user') || 'null');
 
-if (!token || !savedUser) window.location.href = '/';
+if (!token || !savedUser) {
+  const returnTo = `${location.pathname}${location.hash}`;
+  if (location.hash) sessionStorage.setItem('secureexam_return_to', returnTo);
+  window.location.href = '/';
+}
 
 const state = {
   user: savedUser,
@@ -402,13 +406,15 @@ function renderAccessExam() {
   document.querySelector('#accessForm').addEventListener('submit', async (event) => {
     event.preventDefault();
     const raw = new FormData(event.currentTarget).get('key').trim();
-    const key = raw.includes('#take:') ? raw.split('#take:').pop() : raw.split('/').pop();
+    const key = extractExamAccessKey(raw);
+    if (!key) return showToast('Enter a valid access code or direct link');
     navigate(`take:${key}`);
   });
 }
 
 async function renderTakeExam(key) {
-  const exam = await api(`/api/exams/access/${key}`);
+  key = extractExamAccessKey(key);
+  const exam = await api(`/api/exams/access/${encodeURIComponent(key)}`);
   const submission = await api('/api/submissions/start', { method: 'POST', body: JSON.stringify({ examId: exam.id }) });
   state.currentExam = exam;
   state.startedSubmission = submission;
@@ -1034,6 +1040,25 @@ function formatStatus(value) {
   return String(value ?? '')
     .replaceAll('_', ' ')
     .replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function extractExamAccessKey(value) {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+
+  try {
+    const url = new URL(raw);
+    const hash = url.hash || '';
+    if (hash.startsWith('#take:')) return hash.slice('#take:'.length).trim();
+    const token = url.searchParams.get('token') || url.searchParams.get('code') || url.searchParams.get('exam');
+    if (token) return token.trim();
+  } catch (_error) {
+    // Not a full URL; parse it as a token/hash/path below.
+  }
+
+  if (raw.includes('#take:')) return raw.split('#take:').pop().trim();
+  if (raw.startsWith('take:')) return raw.slice('take:'.length).trim();
+  return raw.split(/[/?#]/).filter(Boolean).pop()?.trim() || raw;
 }
 
 function answerTypeNote(type) {
