@@ -13,6 +13,13 @@ const state = {
   cameraFrameTimer: null,
   monitorHeartbeatTimer: null,
   examSecurityCleanups: [],
+  examSecurityActive: false,
+  warningLastSent: {},
+  voiceRecorder: null,
+  voiceChunks: [],
+  voiceStream: null,
+  voiceTimer: null,
+  voiceStartedAt: null,
   isExamFinished: false,
   timer: null,
   startedSubmission: null
@@ -42,7 +49,10 @@ function api(path, options = {}) {
 
 function setupSocket() {
   state.socket = io({ auth: { token } });
-  state.socket.on('warning', (event) => showToast(`${event.name || 'Student'}: ${event.type}`));
+  state.socket.on('warning', (event) => {
+    showToast(`${event.name || 'Student'}: ${event.type}`);
+    appendMonitorWarning(event);
+  });
   state.socket.on('chat_message', (event) => handleIncomingChat(event));
   state.socket.on('student_finished', () => {
     if (location.hash.includes('monitor')) route();
@@ -416,18 +426,19 @@ async function renderTakeExam(key) {
       <div id="monitorStatus" class="message"></div>
       <h3>Teacher Chat</h3>
       <div id="chatBox" class="chat-box"></div>
-      <div class="actions"><input id="chatInput" placeholder="Message teacher"><button class="secondary" id="sendChat" type="button">Send</button><button class="secondary" id="voiceChat" type="button">Voice</button></div>
+      <div class="actions"><input id="chatInput" placeholder="Message teacher"><button class="secondary" id="sendChat" type="button">Send</button><button class="secondary voice-button" id="voiceChat" type="button">Record Voice</button></div>
     </aside>
   </section>`;
-  setupExamSecurityControls(exam);
   await setupExamMonitoring(exam);
+  setupExamSecurityControls(exam);
+  state.examSecurityActive = true;
   startTimer(exam.duration * 60, () => finishExam(true));
   document.querySelector('#takeForm').addEventListener('submit', async (event) => {
     event.preventDefault();
     await finishExam(false);
   });
   document.querySelector('#sendChat').addEventListener('click', () => sendChat(exam.created_by));
-  document.querySelector('#voiceChat').addEventListener('click', () => recordVoice(exam.created_by));
+  document.querySelector('#voiceChat').addEventListener('click', () => recordVoice(exam.created_by, 'voiceChat'));
   await loadChatHistory(exam.id, exam.created_by, 'chatBox');
 }
 
@@ -464,21 +475,15 @@ async function setupExamMonitoring(exam) {
       }, 5000);
     } catch (_error) {
       document.querySelector('#monitorStatus').textContent = 'Media permission denied.';
-      sendWarning(exam.id, 'media_permission_denial', 'Camera or microphone permission denied');
+      sendWarning(exam.id, 'media_permission_denial', 'Camera or microphone permission denied', { force: true });
     }
-  }
-  if (exam.phone_detection) {
-    const phoneTimer = setInterval(() => {
-      if (state.isExamFinished) return;
-      const narrow = Math.min(window.innerWidth, window.innerHeight) < 430;
-      if (narrow) sendWarning(exam.id, 'phone_detection', 'Very small viewport detected during exam');
-    }, 30000);
-    state.examSecurityCleanups.push(() => clearInterval(phoneTimer));
   }
 }
 
 function setupExamSecurityControls(exam) {
   cleanupExamSecurityControls();
+  state.warningLastSent = {};
+  let focusLossTimer = null;
 
   const addSecurityListener = (target, eventName, handler, options = true) => {
     target.addEventListener(eventName, handler, options);
@@ -486,13 +491,29 @@ function setupExamSecurityControls(exam) {
   };
 
   addSecurityListener(document, 'visibilitychange', () => {
-    if (!state.isExamFinished && document.hidden) {
+    if (state.examSecurityActive && !state.isExamFinished && document.hidden) {
       sendWarning(exam.id, 'tab_switch', 'Student switched tabs or minimized the window');
     }
   });
 
   addSecurityListener(window, 'blur', () => {
-    if (!state.isExamFinished) sendWarning(exam.id, 'tab_switch', 'Exam window lost focus');
+    if (!state.examSecurityActive || state.isExamFinished) return;
+    clearTimeout(focusLossTimer);
+    focusLossTimer = setTimeout(() => {
+      if (!document.hasFocus() && !state.isExamFinished) {
+        sendWarning(exam.id, 'tab_switch', 'Exam window lost focus for more than 1 second');
+      }
+    }, 1200);
+  });
+
+  addSecurityListener(window, 'focus', () => {
+    clearTimeout(focusLossTimer);
+  });
+
+  addSecurityListener(window, 'pagehide', () => {
+    if (state.examSecurityActive && !state.isExamFinished) {
+      sendWarning(exam.id, 'tab_switch', 'Student navigated away from the exam page');
+    }
   });
 
   if (exam.screenshot_detection) {
@@ -504,8 +525,9 @@ function setupExamSecurityControls(exam) {
         code === 'printscreen' ||
         (event.metaKey && event.shiftKey && ['3', '4', '5'].includes(key)) ||
         (event.ctrlKey && event.shiftKey && ['s', 'i'].includes(key)) ||
+        (event.ctrlKey && key === 'p') ||
         (event.keyCode === 44);
-      if (!state.isExamFinished && looksLikeScreenshot) {
+      if (state.examSecurityActive && !state.isExamFinished && looksLikeScreenshot) {
         event.preventDefault();
         sendWarning(exam.id, 'screenshot_attempt', 'Screenshot-related keyboard shortcut detected');
         showToast('Screenshot attempt detected');
@@ -513,6 +535,10 @@ function setupExamSecurityControls(exam) {
     };
     addSecurityListener(window, 'keydown', screenshotHandler, true);
     addSecurityListener(window, 'keyup', screenshotHandler, true);
+    addSecurityListener(window, 'beforeprint', (event) => {
+      event.preventDefault();
+      sendWarning(exam.id, 'screenshot_attempt', 'Print or screen capture flow detected');
+    });
   }
 
   if (exam.disable_copy_paste) {
@@ -526,6 +552,15 @@ function setupExamSecurityControls(exam) {
       addSecurityListener(document, eventName, blockClipboard, true);
     });
     addSecurityListener(document, 'contextmenu', blockClipboard, true);
+  }
+
+  if (exam.phone_detection) {
+    const phoneTimer = setInterval(() => {
+      if (!state.examSecurityActive || state.isExamFinished) return;
+      const narrow = Math.min(window.innerWidth, window.innerHeight) < 430;
+      if (narrow) sendWarning(exam.id, 'phone_detection', 'Very small viewport detected during exam');
+    }, 30000);
+    state.examSecurityCleanups.push(() => clearInterval(phoneTimer));
   }
 }
 
@@ -568,6 +603,7 @@ async function renderMonitor(examId) {
       route();
     }));
     document.querySelectorAll('[data-chat]').forEach((button) => button.addEventListener('click', () => sendChat(button.dataset.chat, button.dataset.input)));
+    document.querySelectorAll('[data-voice]').forEach((button) => button.addEventListener('click', () => recordVoice(button.dataset.voice, button.id)));
     monitoring.sessions.forEach((session) => loadChatHistory(examId, session.student_id, `chatBox-${session.student_id}`));
   } catch (error) {
     app.innerHTML = hero('Monitor Students', 'Unable to open the monitoring page right now.') +
@@ -577,7 +613,7 @@ async function renderMonitor(examId) {
 
 function monitorCard(exam, session, warnings) {
   const isFinished = ['submitted', 'timed_out', 'graded'].includes(session.status);
-  return `<section class="card">
+  return `<section class="card" data-monitor-student="${session.student_id}">
     <div class="section-title"><h2>${escapeHtml(session.name)}</h2><button class="danger" data-hide="${session.student_id}">Hide</button></div>
     <p>${badge(session.status, session.status === 'active' ? 'good' : 'warn')} ${badge(session.camera_on ? 'Camera On' : 'Camera Off')} ${badge(session.mic_on ? 'Mic On' : 'Mic Off')}</p>
     <div class="camera-feed ${isFinished ? 'finished' : ''}">
@@ -586,11 +622,31 @@ function monitorCard(exam, session, warnings) {
         : `<img class="camera-feed-image empty" data-camera-student="${session.student_id}" alt="${escapeAttr(session.name)} camera preview">`}
       <span data-camera-time="${session.student_id}">${isFinished ? 'Student has submitted or ended the exam.' : session.camera_on ? 'Waiting for camera preview...' : 'Camera is off'}</span>
     </div>
-    <p>Last seen: ${formatDate(session.last_seen)} · Warnings: ${session.warning_count}</p>
-    ${warnings.slice(0, 4).map((w) => `<p class="card warning-banner">${escapeHtml(w.type)}<br><small>${formatDate(w.timestamp)}</small></p>`).join('')}
+    <p>Last seen: ${formatDate(session.last_seen)} · Warnings: <span data-warning-count="${session.student_id}">${session.warning_count}</span></p>
+    <div data-warning-list="${session.student_id}">
+      ${warnings.slice(0, 4).map((w) => warningBanner(w)).join('')}
+    </div>
     <div id="chatBox-${session.student_id}" class="chat-box monitor-chat"></div>
-    <div class="actions"><input id="chatInput-${session.student_id}" placeholder="Message ${escapeAttr(session.name)}"><button class="secondary" data-chat="${session.student_id}" data-input="chatInput-${session.student_id}">Send</button></div>
+    <div class="actions"><input id="chatInput-${session.student_id}" placeholder="Message ${escapeAttr(session.name)}"><button class="secondary" data-chat="${session.student_id}" data-input="chatInput-${session.student_id}">Send</button><button class="secondary voice-button" id="voiceChat-${session.student_id}" data-voice="${session.student_id}" type="button">Record Voice</button></div>
   </section>`;
+}
+
+function warningBanner(warning) {
+  return `<p class="card warning-banner">${escapeHtml(warning.type)}<br><small>${formatDate(warning.timestamp)}</small></p>`;
+}
+
+function appendMonitorWarning(event) {
+  const routeKey = location.hash.replace('#', '');
+  if (!routeKey.startsWith('monitor:') || routeKey.split(':')[1] !== String(event.examId)) return;
+  const list = document.querySelector(`[data-warning-list="${event.studentId}"]`);
+  const count = document.querySelector(`[data-warning-count="${event.studentId}"]`);
+  if (!list) return;
+  list.insertAdjacentHTML('afterbegin', warningBanner({
+    type: event.type,
+    timestamp: event.timestamp || new Date().toISOString()
+  }));
+  [...list.children].slice(4).forEach((child) => child.remove());
+  if (count) count.textContent = String(Number(count.textContent || 0) + 1);
 }
 
 async function renderSubmissions() {
@@ -727,7 +783,13 @@ function startTimer(seconds, done) {
   }, 1000);
 }
 
-function sendWarning(examId, type, details) {
+function sendWarning(examId, type, details, options = {}) {
+  if (!options.force && (!state.examSecurityActive || state.isExamFinished)) return;
+  const key = `${examId}:${type}:${details}`;
+  const now = Date.now();
+  const cooldown = type === 'tab_switch' ? 5000 : 2500;
+  if (!options.force && now - (state.warningLastSent[key] || 0) < cooldown) return;
+  state.warningLastSent[key] = now;
   state.socket.emit('warning', { examId, type, details });
 }
 
@@ -792,24 +854,71 @@ function appendChatMessage(box, event) {
   box.scrollTop = box.scrollHeight;
 }
 
-async function recordVoice(receiverId) {
-  if (!navigator.mediaDevices) return showToast('Voice recording is not supported in this browser');
-  const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-  const recorder = new MediaRecorder(stream);
-  const chunks = [];
-  recorder.ondataavailable = (event) => chunks.push(event.data);
-  recorder.onstop = async () => {
-    const blob = new Blob(chunks, { type: 'audio/webm' });
-    const dataUrl = await blobToDataUrl(blob);
-    state.socket.emit('chat_message', { examId: state.currentExam?.id, receiverId, message: dataUrl, type: 'voice' });
-    stream.getTracks().forEach((track) => track.stop());
-  };
-  recorder.start();
-  showToast('Recording voice for 5 seconds');
-  setTimeout(() => recorder.stop(), 5000);
+async function recordVoice(receiverId, buttonId = 'voiceChat') {
+  if (state.voiceRecorder?.state === 'recording') {
+    state.voiceRecorder.stop();
+    return;
+  }
+
+  if (!navigator.mediaDevices || !window.MediaRecorder) {
+    return showToast('Voice recording is not supported in this browser');
+  }
+
+  const button = document.querySelector(`#${buttonId}`);
+  try {
+    state.voiceStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    state.voiceChunks = [];
+    state.voiceRecorder = new MediaRecorder(state.voiceStream);
+    state.voiceStartedAt = Date.now();
+
+    state.voiceRecorder.ondataavailable = (event) => {
+      if (event.data?.size) state.voiceChunks.push(event.data);
+    };
+
+    state.voiceRecorder.onstop = async () => {
+      clearInterval(state.voiceTimer);
+      const duration = Math.round((Date.now() - state.voiceStartedAt) / 1000);
+      if (button) {
+        button.classList.remove('recording');
+        button.textContent = 'Record Voice';
+      }
+      state.voiceStream?.getTracks().forEach((track) => track.stop());
+      state.voiceStream = null;
+
+      if (duration < 1 || state.voiceChunks.length === 0) {
+        showToast('Voice recording was too short');
+        return;
+      }
+
+      const blob = new Blob(state.voiceChunks, { type: state.voiceChunks[0].type || 'audio/webm' });
+      const dataUrl = await blobToDataUrl(blob);
+      state.socket.emit('chat_message', {
+        examId: state.currentExam?.id || location.hash.split(':')[1],
+        receiverId,
+        message: dataUrl,
+        type: 'voice'
+      });
+      showToast('Voice message sent');
+    };
+
+    state.voiceRecorder.start();
+    if (button) {
+      button.classList.add('recording');
+      button.textContent = 'Stop 0:00';
+      state.voiceTimer = setInterval(() => {
+        const elapsed = Math.floor((Date.now() - state.voiceStartedAt) / 1000);
+        button.textContent = `Stop ${Math.floor(elapsed / 60)}:${String(elapsed % 60).padStart(2, '0')}`;
+      }, 500);
+    }
+    showToast('Recording voice. Click Stop when done.');
+  } catch (_error) {
+    showToast('Microphone permission denied');
+  }
 }
 
 function stopMedia() {
+  if (state.voiceRecorder?.state === 'recording') state.voiceRecorder.stop();
+  clearInterval(state.voiceTimer);
   if (state.cameraFrameTimer) {
     clearInterval(state.cameraFrameTimer);
     state.cameraFrameTimer = null;
@@ -825,6 +934,7 @@ function stopMedia() {
 function cleanupExamSecurityControls() {
   state.examSecurityCleanups.forEach((cleanup) => cleanup());
   state.examSecurityCleanups = [];
+  state.examSecurityActive = false;
 }
 
 function startCameraFrames(examId) {
