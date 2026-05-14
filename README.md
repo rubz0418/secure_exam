@@ -41,12 +41,7 @@ If your certificate is somewhere else, update `DB_SSL_CA_PATH` in `.env`.
 npm run init-db
 ```
 
-The initializer creates the tables and seeds the first admin if no admin exists:
-
-```text
-Email: admin@secureexam.local
-Password: admin12345
-```
+The initializer creates the tables and seeds the first admin if no admin exists. Set `SEED_ADMIN_EMAIL` and `SEED_ADMIN_PASSWORD` before running it so no default password is used.
 
 4. Start the app:
 

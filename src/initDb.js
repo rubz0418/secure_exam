@@ -155,12 +155,17 @@ async function init() {
 
   const [admins] = await pool.query("SELECT id FROM users WHERE role = 'admin' LIMIT 1");
   if (admins.length === 0) {
-    const password = await bcrypt.hash('admin12345', 10);
+    const adminEmail = process.env.SEED_ADMIN_EMAIL || 'admin@secureexam.local';
+    const adminPassword = process.env.SEED_ADMIN_PASSWORD || `Admin-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const password = await bcrypt.hash(adminPassword, 10);
     await pool.query(
       "INSERT INTO users (name, email, password, role, status) VALUES (?, ?, ?, 'admin', 'active')",
-      ['System Admin', 'admin@secureexam.local', password]
+      ['System Admin', adminEmail, password]
     );
-    console.log('Seeded admin account: admin@secureexam.local / admin12345');
+    console.log(`Seeded admin account: ${adminEmail}`);
+    if (!process.env.SEED_ADMIN_PASSWORD) {
+      console.log(`Generated one-time admin password: ${adminPassword}`);
+    }
   }
 
   console.log('SecureExam database is ready.');

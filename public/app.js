@@ -758,6 +758,8 @@ function renderProfile() {
         <label>Name<input name="name" value="${escapeAttr(state.user.name)}"></label>
         <label>Email<input disabled value="${escapeAttr(state.user.email)}"></label>
         <label>Role<input disabled value="${state.user.role}"></label>
+        <label>Current Password<input name="currentPassword" type="password" autocomplete="current-password"></label>
+        <label>New Password<input name="newPassword" type="password" minlength="8" autocomplete="new-password"></label>
       </div>
       <input type="hidden" name="theme" value="${escapeAttr(state.user.theme || 'default')}">
       <div class="section-title"><h2>Theme Customization</h2></div>

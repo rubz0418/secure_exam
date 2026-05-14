@@ -56,7 +56,15 @@ router.get('/me', requireAuth, async (req, res) => {
 });
 
 router.put('/profile', requireAuth, async (req, res) => {
-  const { name, theme } = req.body;
+  const { name, theme, currentPassword, newPassword } = req.body;
+  if (newPassword) {
+    if (String(newPassword).length < 8) return res.status(400).json({ message: 'New password must be at least 8 characters' });
+    const [users] = await pool.query('SELECT password FROM users WHERE id = ?', [req.user.id]);
+    const ok = await bcrypt.compare(currentPassword || '', users[0]?.password || '');
+    if (!ok) return res.status(400).json({ message: 'Current password is incorrect' });
+    const hash = await bcrypt.hash(newPassword, 10);
+    await pool.query('UPDATE users SET password = ? WHERE id = ?', [hash, req.user.id]);
+  }
   await pool.query('UPDATE users SET name = COALESCE(?, name), theme = COALESCE(?, theme) WHERE id = ?', [
     name || null,
     theme || null,

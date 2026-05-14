@@ -18,15 +18,15 @@
         <button class="tab active" data-tab="login">Login</button>
         <button class="tab" data-tab="register">Register</button>
       </div>
-      <form id="loginForm" class="auth-form">
-        <label>Email<input name="email" type="email" required value="admin@secureexam.local"></label>
-        <label>Password<input name="password" type="password" required value="admin12345"></label>
+      <form id="loginForm" class="auth-form" autocomplete="off">
+        <label>Email<input name="email" type="email" required autocomplete="username"></label>
+        <label>Password<input name="password" type="password" required autocomplete="current-password"></label>
         <button class="primary" type="submit">Login</button>
       </form>
-      <form id="registerForm" class="auth-form hidden">
-        <label>Name<input name="name" required></label>
-        <label>Email<input name="email" type="email" required></label>
-        <label>Password<input name="password" type="password" required minlength="6"></label>
+      <form id="registerForm" class="auth-form hidden" autocomplete="off">
+        <label>Name<input name="name" required autocomplete="name"></label>
+        <label>Email<input name="email" type="email" required autocomplete="email"></label>
+        <label>Password<input name="password" type="password" required minlength="6" autocomplete="new-password"></label>
         <label>Role
           <select name="role">
             <option value="student">Student</option>
