@@ -19,6 +19,8 @@ router.post('/warnings', requireAuth, async (req, res) => {
 });
 
 router.get('/exam/:examId', requireAuth, requireRole('admin', 'teacher'), async (req, res) => {
+  const allowed = await canAccessExam(req.params.examId, req.user);
+  if (!allowed) return res.status(403).json({ message: 'Forbidden' });
   const [sessions] = await pool.query(
     `SELECT m.*, u.name, u.email,
       (SELECT COUNT(*) FROM warnings w WHERE w.exam_id=m.exam_id AND w.student_id=m.student_id) warning_count
@@ -37,11 +39,19 @@ router.get('/exam/:examId', requireAuth, requireRole('admin', 'teacher'), async 
 });
 
 router.patch('/exam/:examId/student/:studentId/hide', requireAuth, requireRole('admin', 'teacher'), async (req, res) => {
+  const allowed = await canAccessExam(req.params.examId, req.user);
+  if (!allowed) return res.status(403).json({ message: 'Forbidden' });
   await pool.query('UPDATE monitoring_sessions SET hidden_by_teacher=1 WHERE exam_id=? AND student_id=?', [
     req.params.examId,
     req.params.studentId
   ]);
   res.json({ ok: true });
 });
+
+async function canAccessExam(examId, user) {
+  if (user.role === 'admin') return true;
+  const [[exam]] = await pool.query('SELECT created_by FROM exams WHERE id = ?', [examId]);
+  return Boolean(exam && exam.created_by === user.id);
+}
 
 module.exports = router;

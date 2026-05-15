@@ -39,6 +39,7 @@ router.get('/access/:key', requireAuth, async (req, res) => {
 router.get('/:id', requireAuth, async (req, res) => {
   const exam = await loadExam(req.params.id);
   if (!exam) return res.status(404).json({ message: 'Exam not found' });
+  if (req.user.role === 'teacher' && exam.created_by !== req.user.id) return res.status(403).json({ message: 'Forbidden' });
   res.json(exam);
 });
 
@@ -141,6 +142,9 @@ router.put('/:id', requireAuth, requireRole('admin', 'teacher'), async (req, res
 });
 
 router.patch('/:id/publish', requireAuth, requireRole('admin', 'teacher'), async (req, res) => {
+  const [existing] = await pool.query('SELECT id, created_by FROM exams WHERE id = ?', [req.params.id]);
+  if (!existing[0]) return res.status(404).json({ message: 'Exam not found' });
+  if (existing[0].created_by !== req.user.id && req.user.role !== 'admin') return res.status(403).json({ message: 'Forbidden' });
   await pool.query('UPDATE exams SET is_published = ? WHERE id = ?', [Boolean(req.body.isPublished), req.params.id]);
   await logActivity(req.user.id, req.body.isPublished ? 'publish_exam' : 'unpublish_exam', `Exam ${req.params.id}`);
   res.json({ ok: true });

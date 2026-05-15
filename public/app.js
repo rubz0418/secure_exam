@@ -438,6 +438,7 @@ async function renderTakeExam(key) {
   await setupExamMonitoring(exam);
   setupExamSecurityControls(exam);
   state.examSecurityActive = true;
+  await enterExamFullscreen();
   startTimer(exam.duration * 60, () => finishExam(true));
   document.querySelector('#takeForm').addEventListener('submit', async (event) => {
     event.preventDefault();
@@ -505,6 +506,7 @@ function setupExamSecurityControls(exam) {
   addSecurityListener(document, 'visibilitychange', () => {
     if (state.examSecurityActive && !state.isExamFinished && document.hidden) {
       sendWarning(exam.id, 'tab_switch', 'Student switched tabs or minimized the window');
+      setExamLock(true, 'Exam paused. Return to this tab to continue.');
     }
   });
 
@@ -514,12 +516,21 @@ function setupExamSecurityControls(exam) {
     focusLossTimer = setTimeout(() => {
       if (!document.hasFocus() && !state.isExamFinished) {
         sendWarning(exam.id, 'tab_switch', 'Exam window lost focus for more than 1 second');
+        setExamLock(true, 'Exam paused. Click back into the exam window to continue.');
       }
     }, 1200);
   });
 
   addSecurityListener(window, 'focus', () => {
     clearTimeout(focusLossTimer);
+    if (!document.hidden) setExamLock(false);
+  });
+
+  addSecurityListener(document, 'fullscreenchange', () => {
+    if (state.examSecurityActive && !state.isExamFinished && !document.fullscreenElement) {
+      sendWarning(exam.id, 'tab_switch', 'Fullscreen exam mode was exited');
+      setExamLock(true, 'Fullscreen mode is required. Click Resume Exam.');
+    }
   });
 
   addSecurityListener(window, 'pagehide', () => {
@@ -541,7 +552,9 @@ function setupExamSecurityControls(exam) {
         (event.keyCode === 44);
       if (state.examSecurityActive && !state.isExamFinished && looksLikeScreenshot) {
         event.preventDefault();
+        event.stopPropagation();
         sendWarning(exam.id, 'screenshot_attempt', 'Screenshot-related keyboard shortcut detected');
+        setExamLock(true, 'Screenshot attempt detected. The teacher has been notified.');
         showToast('Screenshot attempt detected');
       }
     };
@@ -550,6 +563,7 @@ function setupExamSecurityControls(exam) {
     addSecurityListener(window, 'beforeprint', (event) => {
       event.preventDefault();
       sendWarning(exam.id, 'screenshot_attempt', 'Print or screen capture flow detected');
+      setExamLock(true, 'Print or screenshot attempt detected.');
     });
   }
 
@@ -576,6 +590,33 @@ function setupExamSecurityControls(exam) {
   }
 }
 
+async function enterExamFullscreen() {
+  try {
+    if (!document.fullscreenElement && document.documentElement.requestFullscreen) {
+      await document.documentElement.requestFullscreen();
+    }
+  } catch (_error) {
+    showToast('Fullscreen mode may be blocked by the browser. Please keep the exam tab active.');
+  }
+}
+
+function setExamLock(locked, message = '') {
+  let lock = document.querySelector('#examLock');
+  if (!lock) {
+    lock = document.createElement('div');
+    lock.id = 'examLock';
+    lock.className = 'exam-lock hidden';
+    lock.innerHTML = `<div class="exam-lock-panel"><h2>Secure Exam Mode</h2><p id="examLockMessage"></p><button type="button" class="primary" id="resumeExam">Resume Exam</button></div>`;
+    document.body.appendChild(lock);
+    lock.querySelector('#resumeExam').addEventListener('click', async () => {
+      await enterExamFullscreen();
+      if (!document.hidden) setExamLock(false);
+    });
+  }
+  lock.querySelector('#examLockMessage').textContent = message;
+  lock.classList.toggle('hidden', !locked);
+}
+
 async function finishExam(timedOut) {
   if (state.isExamFinished) return;
   state.isExamFinished = true;
@@ -593,6 +634,7 @@ async function finishExam(timedOut) {
   formData.set('status', timedOut ? 'timed_out' : 'submitted');
   formData.set('answers', JSON.stringify(answers));
   await api('/api/submissions/submit', { method: 'POST', body: formData });
+  setExamLock(false);
   stopMedia();
   [...document.querySelectorAll('input, textarea, select, button')].forEach((el) => { el.disabled = true; });
   showToast(timedOut ? 'Time ended. Exam submitted as timed out.' : 'Exam submitted');

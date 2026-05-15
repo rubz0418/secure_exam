@@ -139,6 +139,17 @@ router.put('/:id/grade', requireAuth, requireRole('admin', 'teacher'), async (re
   const { answerGrades = {}, feedback = '' } = req.body;
   const connection = await pool.getConnection();
   try {
+    const [[submissionOwner]] = await connection.query(
+      `SELECT e.created_by
+       FROM submissions s
+       JOIN exams e ON e.id=s.exam_id
+       WHERE s.id=?`,
+      [req.params.id]
+    );
+    if (!submissionOwner) return res.status(404).json({ message: 'Submission not found' });
+    if (req.user.role === 'teacher' && submissionOwner.created_by !== req.user.id) {
+      return res.status(403).json({ message: 'Forbidden' });
+    }
     await connection.beginTransaction();
     let manualTotal = 0;
     for (const [answerId, grade] of Object.entries(answerGrades)) {
