@@ -10,7 +10,7 @@ const router = express.Router();
 router.post('/register', async (req, res) => {
   const { name, email, password, role = 'student' } = req.body;
   if (!name || !email || !password) return res.status(400).json({ message: 'Name, email, and password are required' });
-  if (!['admin', 'teacher', 'student'].includes(role)) return res.status(400).json({ message: 'Invalid role' });
+  if (!['teacher', 'student'].includes(role)) return res.status(400).json({ message: 'Invalid role for public registration' });
 
   const hash = await bcrypt.hash(password, 10);
   try {
