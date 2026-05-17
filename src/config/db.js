@@ -11,7 +11,7 @@ function sslConfig() {
   }
 
   const configuredPath = process.env.DB_SSL_CA_PATH;
-  if (!configuredPath) return { rejectUnauthorized: true };
+  if (!configuredPath) return undefined;
 
   const caPath = path.resolve(process.cwd(), configuredPath);
   if (!fs.existsSync(caPath)) {
@@ -34,7 +34,7 @@ const pool = mysql.createPool({
   waitForConnections: true,
   connectionLimit: 10,
   namedPlaceholders: true,
-  ssl: sslConfig()
+    ssl: sslConfig()
 });
 
 module.exports = { pool };
